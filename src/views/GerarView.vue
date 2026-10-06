@@ -162,8 +162,10 @@ async function gerar() {
 
     try {
         const ref = doc(collection(firestore, "comprovantes"));
+        const newId = ref.id || ("doc_" + Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+        formData.id = newId;
         await setDoc(ref, formData);
-        comprovanteId.value = ref.id;
+        comprovanteId.value = newId;
     } catch (error) {
         console.error('Erro ao gerar comprovante:', error);
         try { alert('Erro! ' + String(error)); } catch (_) {}

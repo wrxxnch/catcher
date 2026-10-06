@@ -24,8 +24,36 @@ const comprovanteBaseUrl = computed(() => {
     return '';
 });
 
+function encodePayload(comp) {
+    if (!comp) return '';
+    try {
+        const payload = {
+            inst: comp.instituicao,
+            np: comp.nomePagador,
+            cp: comp.cpfPagador,
+            v: comp.valor,
+            desc: comp.descricao || '',
+            dh: comp.dataHora?.toDate ? comp.dataHora.toDate().getTime() : Date.now(),
+            nr: comp.nomePilantra || '',
+            cr: comp.cpfPilantra || comp.cnpjPilantra || '',
+            exp: comp.expiracao?.toDate ? comp.expiracao.toDate().getTime() : (Date.now() + 86400000)
+        };
+        const str = JSON.stringify(payload);
+        return btoa(unescape(encodeURIComponent(str)));
+    } catch (_) {
+        return '';
+    }
+}
+
+const comprovanteId = computed(() => {
+    return route.query.id || data.comprovante?.id || '';
+});
+
 const linkComprovante = computed(() => {
-    return `${comprovanteBaseUrl.value}/transacao?id=${data.comprovante?.id || ''}`;
+    const id = comprovanteId.value;
+    const encoded = encodePayload(data.comprovante);
+    const dParam = encoded ? `&d=${encodeURIComponent(encoded)}` : '';
+    return `${comprovanteBaseUrl.value}/transacao?id=${id}${dParam}`;
 });
 
 const copiado = vueRef(false);
@@ -54,35 +82,47 @@ onMounted(async () => {
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
-        data.alert = alertMessage('danger', 'Comprovante não existe!');
-        appStore.loadingToggle();
-        return;
+        let foundLocal = false;
+        try {
+            const rawStore = localStorage.getItem('pl_comprovantes');
+            if (rawStore) {
+                const store = JSON.parse(rawStore);
+                if (store[route.query.id]) {
+                    data.comprovante = { ...store[route.query.id], id: route.query.id };
+                    foundLocal = true;
+                }
+            }
+        } catch (_) {}
+
+        if (!foundLocal) {
+            data.comprovante = { id: route.query.id };
+        }
     } else {
-        data.comprovante = docSnap.data();
-        data.comprovante.id = docSnap.id;
+        data.comprovante = { ...docSnap.data(), id: docSnap.id || route.query.id };
     }
 
     await getFotos(route.query.id);
     await queryAcessos(route.query.id);
 
-    const expiracao = data.comprovante.expiracao.toDate().getTime();
-    let x = setInterval(() => {
-        const now = new Date().getTime();
-        let distance = expiracao - now;
+    if (data.comprovante?.expiracao) {
+        const expiracao = data.comprovante.expiracao.toDate ? data.comprovante.expiracao.toDate().getTime() : (new Date(data.comprovante.expiracao)).getTime();
+        let x = setInterval(() => {
+            const now = new Date().getTime();
+            let distance = expiracao - now;
 
-        // let d = Math.floor(distance / (1000 * 60 * 60 * 24));
-        let h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        let m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        let s = Math.floor((distance % (1000 * 60)) / 1000);
+            let h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            let m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            let s = Math.floor((distance % (1000 * 60)) / 1000);
 
-        data.expiracaoContagem = `Comprovante Expira em: ${h}h ${m}m ${s}s`;
+            data.expiracaoContagem = `Comprovante Expira em: ${h}h ${m}m ${s}s`;
 
-        if (distance < 0) {
-            clearInterval(x);
-            data.expirado = true;
-            data.expiracaoContagem = 'Comprovante Expirado!';
-        }
-    }, 1000)
+            if (distance < 0) {
+                clearInterval(x);
+                data.expirado = true;
+                data.expiracaoContagem = 'Comprovante Expirado!';
+            }
+        }, 1000);
+    }
 
     appStore.loadingToggle();
 
@@ -155,7 +195,7 @@ async function copiarLink(url) {
             <h4 class="alert-heading" style="font-weight: bold;">
                 🎉 Comprovante gerado com sucesso! 🎉
             </h4>
-            <p><b>ID: {{ data.comprovante?.id }}</b></p>
+            <p><b>ID: {{ comprovanteId }}</b></p>
             <p>
                 Agora basta copiar o link do comprovante fake e enviar para o
                 <span style="text-decoration: line-through">meliante</span>
@@ -163,10 +203,10 @@ async function copiarLink(url) {
                 serão listados logo abaixo na seção de <i>Acessos</i>.
             </p>
             <hr>
-            <p class="mb-0">
-                {{ linkComprovante }}<br><br>
+            <p class="mb-0 text-break" style="word-break: break-all;">
+                <span class="d-block mb-2 font-monospace user-select-all bg-light p-2 rounded border text-dark text-start">{{ linkComprovante }}</span>
                 <button @click="copiarLink(linkComprovante)"
-                    type="button" class="btn btn-info">
+                    type="button" class="btn btn-info mt-1">
                     {{ copiado ? 'Copiado! ✅' : 'Copiar Link 📋' }}
                 </button>
             </p>

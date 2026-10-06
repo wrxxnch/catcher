@@ -168,64 +168,77 @@ function generateRandomId() {
 // ----------------------------------------------------
 
 export function collection(db, collectionName) {
-  try {
-    return fbCollection(db || firestore, collectionName);
-  } catch (_) {
-    return {
-      _isMock: true,
-      type: "collection",
-      collectionName,
-    };
+  if (hasFirebaseConfig && (db || firestore)) {
+    try {
+      return fbCollection(db || firestore, collectionName);
+    } catch (_) {}
   }
+  return {
+    _isMock: true,
+    type: "collection",
+    collectionName,
+  };
 }
 
 export function doc(first, second, third) {
-  try {
-    if (third !== undefined) {
-      return fbDoc(first, second, third);
-    }
-    return fbDoc(first, second);
-  } catch (_) {
-    if (first && first.type === "collection") {
-      const newId = second || generateRandomId();
-      return {
-        _isMock: true,
-        id: newId,
-        collectionName: first.collectionName,
-        path: `${first.collectionName}/${newId}`,
-      };
-    }
-    const coll = second;
-    const id = third || generateRandomId();
+  if (hasFirebaseConfig && first && !first._isMock) {
+    try {
+      if (third !== undefined) {
+        return fbDoc(first, second, third);
+      }
+      if (second !== undefined) {
+        return fbDoc(first, second);
+      }
+      return fbDoc(first);
+    } catch (_) {}
+  }
+
+  if (first && (first.type === "collection" || first._isMock)) {
+    const collName = first.collectionName || "comprovantes";
+    const newId = second || generateRandomId();
     return {
       _isMock: true,
-      id,
-      collectionName: coll,
-      path: `${coll}/${id}`,
+      id: newId,
+      collectionName: collName,
+      path: `${collName}/${newId}`,
     };
   }
+
+  const coll = second || "comprovantes";
+  const id = third || generateRandomId();
+  return {
+    _isMock: true,
+    id,
+    collectionName: coll,
+    path: `${coll}/${id}`,
+  };
 }
 
 export async function setDoc(docRef, data) {
-  try {
-    if (docRef && !docRef._isMock) {
+  const collName = docRef.collectionName || (docRef.path ? docRef.path.split("/")[0] : "comprovantes");
+  const id = docRef.id || generateRandomId();
+  docRef.id = id;
+
+  if (hasFirebaseConfig && docRef && !docRef._isMock) {
+    try {
       await fbSetDoc(docRef, data);
+    } catch (err) {
+      console.warn("[Pega-Ladrão] Cloud setDoc error, persisting local backup:", err);
     }
-  } catch (err) {
-    console.warn("[Pega-Ladrão] Cloud setDoc error, persisting local backup:", err);
   }
 
   // Also persist locally for offline/instant availability
-  const collName = docRef.collectionName || (docRef.path ? docRef.path.split("/")[0] : "comprovantes");
-  const id = docRef.id;
   const store = getLocalData(collName);
-  store[id] = serialize(data);
+  store[id] = serialize({ ...data, id });
   setLocalData(collName, store);
   return Promise.resolve();
 }
 
 export async function getDoc(docRef) {
-  if (docRef && !docRef._isMock) {
+  const id = docRef.id || "";
+  const collName = docRef.collectionName || (docRef.path ? docRef.path.split("/")[0] : "comprovantes");
+
+  if (hasFirebaseConfig && docRef && !docRef._isMock) {
     try {
       const snap = await fbGetDoc(docRef);
       if (snap.exists()) {
@@ -236,8 +249,6 @@ export async function getDoc(docRef) {
     }
   }
 
-  const collName = docRef.collectionName || (docRef.path ? docRef.path.split("/")[0] : "comprovantes");
-  const id = docRef.id;
   const store = getLocalData(collName);
   const exists = Boolean(store[id]);
   const docData = exists ? deserialize(store[id]) : null;
@@ -245,7 +256,7 @@ export async function getDoc(docRef) {
   return {
     id,
     exists: () => exists,
-    data: () => (docData ? { ...docData } : undefined),
+    data: () => (docData ? { ...docData, id } : undefined),
   };
 }
 
