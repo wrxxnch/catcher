@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeMount, onMounted, reactive, ref as vueRef } from 'vue';
+import { computed, onBeforeMount, onMounted, reactive, ref as vueRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { firestore, storage, collection, doc, getDoc, getDocs, orderBy, query, where, getDownloadURL, listAll, ref } from '../firebase';
 import { useAppStore } from '../store';
@@ -8,7 +8,26 @@ import { alertMessage, copyToClipboard, formataDataHoraPtBr } from '../functions
 const route = useRoute();
 const router = useRouter();
 
-const VITE_DEFAULT_COMPROVANTE_URL = import.meta.env.VITE_DEFAULT_COMPROVANTE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+const comprovanteBaseUrl = computed(() => {
+    if (import.meta.env.VITE_DEFAULT_COMPROVANTE_URL) {
+        return import.meta.env.VITE_DEFAULT_COMPROVANTE_URL.replace(/\/+$/, '');
+    }
+    if (typeof window !== 'undefined') {
+        const segments = window.location.pathname.split('/').filter(Boolean);
+        const knownRoutes = ['acessos', '_gerar', 'transacao'];
+        if (segments.length > 0 && knownRoutes.includes(segments[segments.length - 1])) {
+            segments.pop();
+        }
+        const repoPrefix = segments.length > 0 ? '/' + segments.join('/') : '';
+        return `${window.location.origin}${repoPrefix}`;
+    }
+    return '';
+});
+
+const linkComprovante = computed(() => {
+    return `${comprovanteBaseUrl.value}/transacao?id=${data.comprovante?.id || ''}`;
+});
+
 const copiado = vueRef(false);
 
 const appStore = useAppStore();
@@ -145,8 +164,8 @@ async function copiarLink(url) {
             </p>
             <hr>
             <p class="mb-0">
-                {{ VITE_DEFAULT_COMPROVANTE_URL }}/transacao?id={{ data.comprovante?.id }}<br><br>
-                <button @click="copiarLink(`${VITE_DEFAULT_COMPROVANTE_URL}/transacao?id=${data.comprovante?.id}`)"
+                {{ linkComprovante }}<br><br>
+                <button @click="copiarLink(linkComprovante)"
                     type="button" class="btn btn-info">
                     {{ copiado ? 'Copiado! ✅' : 'Copiar Link 📋' }}
                 </button>

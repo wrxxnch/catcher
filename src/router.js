@@ -13,8 +13,24 @@ const routes = [
     { path: '/:pathMatch(.*)*', name: 'NotFound', component: NotFound },
 ];
 
+function getRouterBase() {
+    const raw = import.meta.env.BASE_URL;
+    if (raw && raw !== './' && raw !== '.') {
+        return raw;
+    }
+    if (typeof window !== 'undefined') {
+        const segments = window.location.pathname.split('/').filter(Boolean);
+        const knownRoutes = ['acessos', '_gerar', 'transacao'];
+        if (segments.length > 0 && knownRoutes.includes(segments[segments.length - 1])) {
+            segments.pop();
+        }
+        return segments.length > 0 ? '/' + segments.join('/') + '/' : '/';
+    }
+    return '/';
+}
+
 const router = createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
+    history: createWebHistory(getRouterBase()),
     routes,
 });
 
